@@ -8,7 +8,29 @@ editor_options:
 ---
 
 ```{r}
+getwd()
+
+
+```
+
+```{r}
 ## I will commit now these changes and then will see if these commits will work in my github or no
+
+df_controls_expanded <- df %>%
+  # keep only control rows
+  filter(str_detect(treatment, "^C ")) %>%
+  
+  # remove the leading "C "
+  mutate(chem_list = str_remove(treatment, "^C ")) %>%
+  
+  # split chemicals into multiple rows
+  separate_rows(chem_list, sep = " ") %>%
+  
+  # rebuild treatment as "C CHEM"
+  mutate(treatment = paste("C", chem_list)) %>%
+  
+  # clean up
+  select(-chem_list)
 
 ```
 
