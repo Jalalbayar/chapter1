@@ -1,0 +1,308 @@
+---
+title: "toxcast"
+author: "Jalal Bayar"
+date: "2026-10-05"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+### This file i want to see in the Desktop after cloning it. lets see what happened.
+
+```
+
+```{r}
+
+install.packages("nhanesA")
+library(nhanesA)
+
+```
+
+
+```{r}
+
+# List laboratory tables for one cycle (use the start year, e.g., 2017 = 2017-2018)
+res <- nhanesSearch("phthalate")
+
+# 1. Download the data table (one row per person)
+phth <- nhanes("PHTHTE_J")   
+
+
+```
+
+
+
+```{r}
+
+```
+
+```{r}
+#Loading libraries
+library(lubridate); library(here); library(tidyverse); library(corrplot); library(agricolae); library(here); library(dplyr); library(ggplot2); library(pheatmap); library(reshape2); library(RColorBrewer); library(WebGestaltR);
+library(clusterProfiler)
+library(igraph)
+library(ggraph)
+library(ctxR)
+
+getwd()
+here()
+
+```
+
+
+
+```{r}
+
+
+register_ctx_api_key(
+  key = "1cb04e58-2dc5-41e7-8b33-5fe1e128744d",
+  write = TRUE
+)
+
+```
+
+```{r}
+
+additives_cas = read.csv("~/jason_additives_full_df.csv", stringsAsFactors = FALSE)
+
+additives_cas = additives_cas %>%
+  select(CAS)
+
+```
+
+```{r}
+
+library(ctxR)
+library(dplyr)
+library(data.table)
+
+# Install httk and its required dependencies
+install.packages("httk", dependencies = TRUE)
+
+
+library(httk)
+
+```
+
+```{r}
+
+# 2. Clean whitespace from your CASRN column (replace 'CASRN' with your actual column name)
+additives_cas$CAS <- trimws(additives_cas$CAS)
+```
+
+```{r}
+
+# 3. Extract the CAS-to-DTXSID lookup table from httk
+httk_lookup <- chem.physical_and_invitro.data[, c("CAS", "DTXSID", "Compound")]
+
+# 4. Merge with your original dataframe (keeps all rows from your CSV)
+df_mapped <- merge(additives_cas, httk_lookup, by.x = "CAS", by.y = "CAS", all.x = TRUE)
+
+```
+
+```{r}
+# Count total NAs in the DTXSID column
+sum(is.na(df_mapped$DTXSID))
+
+```
+
+
+```{r}
+
+# 1. Isolate only the unique CASRNs that failed to match in httk
+missing_cas <- unique(na.omit(df_mapped$CAS[is.na(df_mapped$DTXSID) & df_mapped$CAS != ""]))
+
+# 2. Batch query the CompTox API for the missing CASRNs
+ctx_res <- chemical_equal_batch(word_list = missing_cas)
+
+# 3. Map the newly found DTXSIDs back into the NA slots of df_mapped
+idx <- match(df_mapped$CAS, ctx_res$searchValue)
+needs_fill <- is.na(df_mapped$DTXSID)
+df_mapped$DTXSID[needs_fill] <- ctx_res$dtxsid[idx[needs_fill]]
+
+# 4. Save the completed dataset and verify remaining NAs
+sum(is.na(df_mapped$DTXSID))
+
+
+```
+
+
+```{r}
+
+dtxsids <- df_mapped %>%
+  pull(DTXSID) %>%
+  as.character() %>%
+  trimws() %>%
+  unique()
+
+dtxsids <- dtxsids[
+  !is.na(dtxsids) & grepl("^DTXSID[0-9]+$", dtxsids)
+]
+
+length(dtxsids)
+
+```
+
+
+```{r}
+test <- get_bioactivity_details_batch(
+  DTXSID = head(dtxsids, 5),
+  rate_limit = 0.2
+)
+
+test_df <- rbindlist(test, fill = TRUE)
+
+View(test_df)
+
+```
+
+```{r}
+
+# Split into batches of 25
+batches <- split(
+  dtxsids,
+  ceiling(seq_along(dtxsids) / 25)
+)
+
+# Create folder
+dir.create("bioactivity_batches", showWarnings = FALSE)
+
+# Download all batches
+for (i in seq_along(batches)) {
+
+  file <- paste0("bioactivity_batches/batch_", i, ".rds")
+
+  if (file.exists(file)) next
+
+  cat("Downloading batch", i, "of", length(batches), "\n")
+
+  tryCatch({
+
+    result <- get_bioactivity_details_batch(
+      DTXSID = batches[[i]],
+      rate_limit = 0.2
+    )
+
+    saveRDS(result, file)
+
+  }, error = function(e) {
+    message("Batch ", i, " failed: ", conditionMessage(e))
+  })
+}
+
+
+```
+
+```{r}
+
+files <- list.files(
+  "bioactivity_batches",
+  pattern = "\\.rds$",
+  full.names = TRUE
+)
+
+bioactivity_all <- rbindlist(
+  unlist(lapply(files, readRDS), recursive = FALSE),
+  fill = TRUE
+)
+
+View(bioactivity_all)
+
+```
+
+
+```{r}
+write.csv(
+  bioactivity_all,
+  "plastic_additives_bioactivity.csv",
+  row.names = FALSE
+)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+library(ctxR)
+# Fetch chemical data for Bisphenol A (BPA) using its DTXSID
+bpa_details <- get_chemical_details(DTXSID = "DTXSID7020182")
+
+# View the resulting data frame or table
+print(bpa_details)
+
+
+```
+
+```{r}
+library(ctxR)
+# Retrieve property values like boiling point or molecular weight
+hazard_data <- get_hazard_by_dtxsid(DTXSID = "DTXSID7020182")
+
+```
+
+```{r}
+
+bpa_bioactivity <- get_bioactivity_details(DTXSID = "DTXSID7020182")
+
+```
+
+
+```{r}
+library(ctxR)
+
+# Dibutyl phthalate (CAS 84-74-2)
+bio <- get_bioactivity_details("DTXSID2021781")
+
+
+# Look for transcriptomics / gene-expression assay results
+if (is.data.frame(bio)) {
+  matches <- grepl(
+    "transcript|gene expression|HTTr",
+    apply(bio, 1, paste, collapse = " "),
+    ignore.case = TRUE
+  )
+  gene_assays <- bio[matches, , drop = FALSE]
+  print(gene_assays)
+}
+
+```
+
+
+## I am following to read EPA TOXCAST dashboard
+```{r}
+my_key <- "01cbaf22-904f-11ee-954e-325096b39f47"
+
+bpa_details <- get_chemical_details(DTXSID = 'DTXSID7020182',
+                                    API_key = my_key)
+bpa_details <- data.table::as.data.table(bpa_details)
+head(bpa_details)
+
+
+bpa_info <- get_chem_info(DTXSID = "DTXSID7020182",
+                          API_key = my_key)
+bpa_info <- data.table::as.data.table(bpa_info)
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
