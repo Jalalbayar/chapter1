@@ -7,48 +7,17 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r}
-getwd()
 
-
-```
-
-```{r}
-## I will commit now these changes and then will see if these commits will work in my github or no
-
-df_controls_expanded <- df %>%
-  # keep only control rows
-  filter(str_detect(treatment, "^C ")) %>%
-  
-  # remove the leading "C "
-  mutate(chem_list = str_remove(treatment, "^C ")) %>%
-  
-  # split chemicals into multiple rows
-  separate_rows(chem_list, sep = " ") %>%
-  
-  # rebuild treatment as "C CHEM"
-  mutate(treatment = paste("C", chem_list)) %>%
-  
-  # clean up
-  select(-chem_list)
-
-```
 
 ```{r}
 
-install.packages("nhanesA")
-library(nhanesA)
 
 ```
 
 
 ```{r}
 
-# List laboratory tables for one cycle (use the start year, e.g., 2017 = 2017-2018)
-res <- nhanesSearch("phthalate")
 
-# 1. Download the data table (one row per person)
-phth <- nhanes("PHTHTE_J")   
 
 
 ```
@@ -72,6 +41,13 @@ here()
 
 ```
 
+
+```{r}
+
+bioactivity_add <- read.csv("~/PhD/chapter1/Raw/plastic_additives_bioactivity.csv")
+
+
+```
 
 
 ```{r}
