@@ -9,7 +9,282 @@ editor_options:
 ```{r}
 library(httk)
 
+execute.vignette <- FALSE
+library(readxl)
+library(ggplot2)
 
+```
+
+```{r}
+NSAMP <- 25
+getwd()
+```
+
+
+```{r}
+
+load("~/PhD/chapter1/Raw/invitrodb_3_5_mc5.Rdata")
+
+
+```
+
+
+```{r}
+
+toxcast.httk <- subset(mc5, dsstox_substance_id %in% get_cheminfo(info = "DTXSID", suppress.messages = TRUE))
+
+```
+
+```{r}
+my.chems <- c(
+  "100-20-9",
+  "100-21-0",
+  "100-40-3",
+  "100-41-4",
+  "100-42-5",
+  "100-43-6",
+  "100-44-7",
+  "100-51-6",
+  "100-52-7",
+  "100-57-2",
+  "100-74-3",
+  "100-79-8",
+  "100-97-0",
+  "100080-82-8",
+  "10022-31-8",
+  "10025-67-9",
+  "10025-69-1",
+  "10025-73-7",
+  "10025-87-3",
+  "10026-24-1",
+  "10028-15-6",
+  "10031-43-3",
+  "10034-96-5",
+  "10035-10-6"
+)
+
+add_example_toxcast <- as.data.frame(mc5[mc5$casn %in% my.chems, ])
+
+
+```
+
+```{r}
+set.seed(1234)
+my.chems <- sample(mc5$dsstox_substance_id,50)
+example.toxcast <- as.data.frame(mc5[mc5$dsstox_substance_id %in% my.chems,])
+
+```
+
+
+
+```{r}
+
+lexample.toxcast <- example.toxcast[, c("chnm",
+              "dsstox_substance_id",
+              "spid",
+              "hitc",
+              "modl",
+              "aeid",
+              "modl_ga",
+              "modl_ac10",
+              "modl_acc")]
+# reduce precision to decrease space:
+cols <- c("modl_ga", "modl_ac10", "modl_acc")
+for (this.col in cols)
+  example.toxcast[, this.col] = signif(example.toxcast[, this.col], 3)
+save(example.toxcast,file="introtoivive-toxcast.Rdata",version=2)
+
+```
+
+
+```{r}
+
+toxcast.table <- NULL
+for (this.id in unique(example.toxcast$dsstox_substance_id)[1:10])
+{
+  this.subset <- subset(example.toxcast, dsstox_substance_id == this.id)
+  these.hits <- subset(this.subset, hitc==1)
+  if (dim(these.hits)[1]>0){
+      this.row <- data.frame(Compound=as.character(this.subset[1,"chnm"]),
+                         DTXSID=this.id,
+                         Total.Assays = dim(this.subset)[1],
+                         Unique.Assays = length(unique(this.subset$aeid)),
+                         Total.Hits = dim(these.hits)[1],
+                         Unique.Hits = length(unique(these.hits$aeid)),
+                         Low.AC50 = signif(min(these.hits$modl_ga),3),
+                         Low.AC10 = signif(min(these.hits$modl_ac10),3),
+                         Low.ACC = signif(min(these.hits$modl_acc),3),
+                         Q10.AC50 = signif(quantile(these.hits$modl_ga,probs=0.1),3),
+                         Q10.AC10 = signif(quantile(these.hits$modl_ac10,probs=0.1),3),
+                         Q10.ACC = signif(quantile(these.hits$modl_acc,probs=0.1),3),
+                         Med.AC50 = signif(median(these.hits$modl_ga),3),
+                         Med.AC10 = signif(median(these.hits$modl_ac10),3),
+                         Med.ACC = signif(median(these.hits$modl_acc),3),
+                         Q90.AC50 = signif(quantile(these.hits$modl_ga,probs=0.9),3),
+                         Q90.AC10 = signif(quantile(these.hits$modl_ac10,probs=0.9),3),
+                         Q90.ACC = signif(quantile(these.hits$modl_acc,probs=0.9),3)
+                         )
+    toxcast.table <- rbind(toxcast.table, this.row)
+  }
+}
+rownames(toxcast.table) <- seq(1,dim(toxcast.table)[1])
+knitr::kable(head(toxcast.table[,1:6]), caption = "Summarized ToxCast Data",
+             floating.environment="sidewaystable")
+
+
+
+
+```
+
+
+```{r}
+
+for (this.id in unique(toxcast.table$DTXSID))
+{
+# get_cheminfo() gives a list of all the CAS numbers for which HTTK will work:
+  if (this.id %in% get_cheminfo(info="dtxsid", suppress.messages=TRUE))
+  {
+# Set a random number generator seed so that the Monte Carlo will always give
+# the same random sequence:
+    set.seed(12345)
+    toxcast.table[toxcast.table$DTXSID==this.id,"Css"] <- 
+      calc_mc_css(dtxsid=this.id,
+                  output.units="uM",
+                  samples=NSAMP,
+                  suppress.messages=TRUE)
+    toxcast.table[toxcast.table$DTXSID==this.id,"Css.Type"] <- "in vitro"
+  }
+}
+
+```
+
+
+```{r}
+
+knitr::kable(toxcast.table[1:10,c("Compound","Q10.AC50","Css","Css.Type")], 
+                                caption = "Summarized ToxCast Data",
+             floating.environment="sidewaystable")
+
+```
+
+```{r}
+
+load_sipes2017()
+
+```
+
+```{r}
+for (this.id in unique(toxcast.table$DTXSID))
+{
+  if (this.id %in% get_cheminfo(info="dtxsid", suppress.messages=TRUE) &
+    is.na(toxcast.table[toxcast.table$DTXSID==this.id,"Css"]))
+  {
+# Set a random number generator seed so that the Monte Carlo will always give
+# the same random sequence:
+    set.seed(12345)
+    toxcast.table[toxcast.table$DTXSID==this.id,"Css"] <- 
+      calc_mc_css(dtxsid=this.id,
+                  output.units="uM",
+                  samples=NSAMP,
+                  suppress.messages=TRUE)
+    toxcast.table[toxcast.table$DTXSID==this.id,"Css.Type"] <- "in silico"
+  }
+}
+
+```
+
+```{r}
+
+toxcast.table$EquivDose <- signif(10^toxcast.table$Q10.AC50 / toxcast.table$Css,
+                                  3)
+
+```
+
+
+```{r}
+
+SEEM <- read.csv("~/PhD/chapter1/Raw/SupTable-all.chem.preds-2018-11-28.txt",stringsAsFactors=F)
+
+
+```
+
+
+```{r}
+
+example.seem <- as.data.frame(subset(SEEM, 
+                              dsstox_substance_id %in% toxcast.table$DTXSID))
+for (this.col in 4:36) 
+  example.seem[,this.col] <- signif(example.seem[,this.col],4)
+save(example.seem,file="introtoivive-seem.Rdata",version=2)
+
+```
+
+
+
+```{r}
+
+example.seem <- httk::example.seem
+toxcast.table <- merge(toxcast.table,
+                       example.seem[,c(
+                         "dsstox_substance_id",
+                         "seem3",
+                         "seem3.l95",
+                         "seem3.u95",
+                         "Pathway",
+                         "AD")],      
+                       by.x="DTXSID",
+                       by.y="dsstox_substance_id",
+                       all.x = TRUE)
+
+```
+
+
+
+```{r}
+toxcast.table$BER <- signif(toxcast.table$EquivDose/toxcast.table$seem3.u95, 3)
+toxcast.table <- toxcast.table[order(toxcast.table$BER),]
+```
+
+```{r}
+
+toxcast.table$Compound <- factor(toxcast.table$Compound,
+                                    levels=toxcast.table$Compound)
+
+
+```
+
+```{r}
+
+BER.plot <- ggplot(data=toxcast.table) +
+  geom_segment(aes(x=Compound,
+                   xend=Compound,
+                   y=(10^Q10.AC50)/Css,
+                   yend=(10^Q90.AC50)/Css),
+               size=1,
+               color="red",
+               alpha=0.5) + 
+  geom_segment(aes(x=Compound,
+                   xend=Compound,
+                   y=seem3.l95,
+                   yend=seem3.u95),
+               size=1,
+               color="blue",
+               alpha=0.5) +   
+  geom_point(aes(x=Compound,y=(10^Med.AC50)/Css),shape=3,color="red") +
+  geom_point(aes(x=Compound,y=seem3),shape=3,color="blue") +
+  theme_bw() +
+  theme(axis.title.x = element_text(size=8)) + 
+  theme(axis.title.y = element_text(size=8)) + 
+  scale_y_log10() + 
+  theme(axis.text.x = element_text(
+    face = "bold", 
+    hjust = 1, 
+    vjust = 1, 
+    size = 4, 
+    angle = 45)) +
+  ylab("Bioactive Dose & Exposure\nmg/kg BW/day") + 
+  xlab("Chemicals Ranked By BER")
+print(BER.plot)
 
 ```
 
